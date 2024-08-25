@@ -2,21 +2,21 @@
 *
 * Itagaki Fumihiko 08-Aug-92  Create.
 * 1.0
-* Itagaki Fumihiko 29-Sep-92  �W�����͂��L�����N�^�E�f�o�C�X�ł���Ƃ��C�ǂݍ��ݐ�p������
-*                             �t�����f�B���N�g���ɂ́C�i�ނ��ǂ�����₢���킹��悤�ɂ����D
-*                             �܂��C�f�B���N�g���͓ǂݍ��ݐ�p��V�X�e���������t���Ă��Ă�
-*                             �폜����悤�ɂ����D
+* Itagaki Fumihiko 29-Sep-92  標準入力がキャラクタ・デバイスであるとき，読み込み専用属性の
+*                             付いたディレクトリには，進むかどうかを問い合わせるようにした．
+*                             また，ディレクトリは読み込み専用やシステム属性が付いていても
+*                             削除するようにした．
 * 1.1
-* Itagaki Fumihiko 06-Nov-92  strip_excessive_slashes�̃o�Ofix�ɔ������ŁD
-*                             ���ׂȃ��b�Z�[�W�ύX�D
+* Itagaki Fumihiko 06-Nov-92  strip_excessive_slashesのバグfixに伴う改版．
+*                             些細なメッセージ変更．
 * 1.3
 * Itagaki Fumihiko 20-Jan-93  GETPDB -> lea $10(a0),a0
-* Itagaki Fumihiko 20-Jan-93  ���� - �� -- �̈����̕ύX
-* Itagaki Fumihiko 23-Jan-93  -f �I�v�V�������w�肳��Ă���ꍇ�ɂ́C�t�@�C���������^�����
-*                             �Ă��Ȃ��Ă�����I������悤�ɂ����D
+* Itagaki Fumihiko 20-Jan-93  引数 - と -- の扱いの変更
+* Itagaki Fumihiko 23-Jan-93  -f オプションが指定されている場合には，ファイル引数が与えられ
+*                             ていなくても正常終了するようにした．
 * 1.4
 *
-* Usage: rm [ -firvR ] [ -- ] <�t�@�C��> ...
+* Usage: rm [ -firvR ] [ -- ] <ファイル> ...
 
 .include doscall.h
 .include error.h
@@ -32,17 +32,17 @@
 .xref cat_pathname
 .xref strip_excessive_slashes
 
-MAXRECURSE	equ	32	*  �T�u�f�B���N�g�����폜���邽�߂ɍċA����񐔂̏���D
-				*  MAXDIR �i�p�X���̃f�B���N�g���� "/1/2/3/../" �̒����j
-				*  �� 64 �ł��邩��A31�ŏ[���ł��邪�C1�Ԃ�]�T��������
-				*  32 �Ƃ��Ă����D
-				*  �X�^�b�N�ʂɂ������D
+MAXRECURSE	equ	32	*  サブディレクトリを削除するために再帰する回数の上限．
+				*  MAXDIR （パス名のディレクトリ部 "/1/2/3/../" の長さ）
+				*  が 64 であるから、31で充分であるが，1つぶん余裕を持って
+				*  32 としておく．
+				*  スタック量にかかわる．
 
-GETSLEN		equ	32	*  �[���ɖ₢���킹��ۂ̓��̓o�C�g���̏���D
-				*  ���p��C1�o�C�g����Ώ[���ł��邵�C2�o�C�g���������͂����
-				*  ���Ƃ��l�����Ă� 2�o�C�g����Ώ[���ł��邪�C�̍ق������̂�
-				*  32�o�C�g���x�͓��͂ł���悤�ɂ��Ă����D
-				*  �s���̓o�b�t�@�ʂɂ������D
+GETSLEN		equ	32	*  端末に問い合わせる際の入力バイト数の上限．
+				*  実用上，1バイトあれば充分であるし，2バイト文字が入力される
+				*  ことを考慮しても 2バイトあれば充分であるが，体裁が悪いので
+				*  32バイト程度は入力できるようにしておく．
+				*  行入力バッファ量にかかわる．
 
 FLAG_f		equ	0
 FLAG_i		equ	1
@@ -54,8 +54,8 @@ start:
 		bra.s	start1
 		dc.b	'#HUPAIR',0
 start1:
-		lea	stack_bottom,a7			*  A7 := �X�^�b�N�̒�
-		lea	$10(a0),a0			*  A0 : PDB�A�h���X
+		lea	stack_bottom,a7			*  A7 := スタックの底
+		lea	$10(a0),a0			*  A0 : PDBアドレス
 		move.l	a7,d0
 		sub.l	a0,d0
 		move.l	d0,-(a7)
@@ -63,10 +63,10 @@ start1:
 		DOS	_SETBLOCK
 		addq.l	#8,a7
 	*
-	*  �������ъi�[�G���A���m�ۂ���
+	*  引数並び格納エリアを確保する
 	*
-		lea	1(a2),a0			*  A0 := �R�}���h���C���̕�����̐擪�A�h���X
-		bsr	strlen				*  D0.L := �R�}���h���C���̕�����̒���
+		lea	1(a2),a0			*  A0 := コマンドラインの文字列の先頭アドレス
+		bsr	strlen				*  D0.L := コマンドラインの文字列の長さ
 		addq.l	#1,d0
 		move.l	d0,-(a7)
 		DOS	_MALLOC
@@ -74,13 +74,13 @@ start1:
 		tst.l	d0
 		bmi	insufficient_memory
 
-		movea.l	d0,a1				*  A1 := �������ъi�[�G���A�̐擪�A�h���X
+		movea.l	d0,a1				*  A1 := 引数並び格納エリアの先頭アドレス
 	*
-	*  �������f�R�[�h���C���߂���
+	*  引数をデコードし，解釈する
 	*
-		bsr	DecodeHUPAIR			*  �������f�R�[�h����
-		movea.l	a1,a0				*  A0 : �����|�C���^
-		move.l	d0,d7				*  D7.L : �����J�E���^
+		bsr	DecodeHUPAIR			*  引数をデコードする
+		movea.l	a1,a0				*  A0 : 引数ポインタ
+		move.l	d0,d7				*  D7.L : 引数カウンタ
 		moveq	#0,d5				*  D5.L : bit0:-f
 							*         bit1:-i
 							*         bit2:-r/-R
@@ -160,30 +160,30 @@ set_option_done:
 
 decode_opt_done:
 	*
-	*  �W�����͂��[���ł��邩�ǂ����𒲂ׂĂ���
+	*  標準入力が端末であるかどうかを調べておく
 	*
-		moveq	#0,d0				*  �W�����͂�
-		bsr	is_chrdev			*  �L�����N�^�f�o�C�X
+		moveq	#0,d0				*  標準入力は
+		bsr	is_chrdev			*  キャラクタデバイス
 		sne	stdin_is_terminal
 	*
-	*  �����J�n
+	*  処理開始
 	*
-		moveq	#0,d6				*  D6.W : �G���[�E�R�[�h
+		moveq	#0,d6				*  D6.W : エラー・コード
 		tst.l	d7
 		beq	too_few_args
 rm_loop:
 		movea.l	a0,a1
 		bsr	strfor1
-		move.l	a0,-(a7)			*  ���̈����̃A�h���X���v�b�V��
+		move.l	a0,-(a7)			*  次の引数のアドレスをプッシュ
 		movea.l	a1,a0
 		bsr	strip_excessive_slashes
-		bsr	remove				*  ����������
+		bsr	remove				*  引数を処理
 		movea.l	(a7)+,a0
-		subq.l	#1,d7				*  �����̐�����
-		bne	rm_loop				*  �J��Ԃ�
+		subq.l	#1,d7				*  引数の数だけ
+		bne	rm_loop				*  繰り返し
 exit_program:
 	*
-	*  �I��
+	*  終了
 	*
 		move.w	d6,-(a7)
 		DOS	_EXIT2
@@ -206,14 +206,14 @@ insufficient_memory:
 		moveq	#3,d6
 		bra	exit_program
 *****************************************************************
-* remove - �t�@�C�����폜����
+* remove - ファイルを削除する
 *
 * CALL
-*      A0     �t�@�C�����̐擪�A�h���X
+*      A0     ファイル名の先頭アドレス
 *
 * RETURN
-*      D1-D3/A1-A3  �j��
-*      D0.L   �t�@�C���܂��̓f�B���N�g�������݂��C������폜�����Ȃ� 0
+*      D1-D3/A1-A3  破壊
+*      D0.L   ファイルまたはディレクトリが存在し，それを削除したなら 0
 *****************************************************************
 remove_pathbuf = -((((MAXPATH+1)+1)>>1)<<1)
 remove_filesbuf = remove_pathbuf-(((STATBUFSIZE+1)>>1)<<1)
@@ -229,7 +229,7 @@ LEAVE_DIR	macro
 
 
 remove:
-		moveq	#0,d3				*  D3.L : �f�B���N�g���̐[��
+		moveq	#0,d3				*  D3.L : ディレクトリの深さ
 		movea.l	a0,a1
 		move.b	(a0),d0
 		beq	remove_no_drive
@@ -286,8 +286,8 @@ remove_directory:
 		btst	#FLAG_r,d5
 		beq	it_is_directory
 
-		move.w	d0,d4				*  D4.W : ���̃f�B���N�g���� mode
-		addq.l	#1,d3				*  �f�B���N�g���̐[�����C���N�������g
+		move.w	d0,d4				*  D4.W : このディレクトリの mode
+		addq.l	#1,d3				*  ディレクトリの深さをインクリメント
 		cmp.l	#MAXRECURSE,d3
 		bhi	dir_too_deep
 
@@ -297,7 +297,7 @@ remove_directory:
 		lea	dos_wildcard_all(pc),a2
 		lea	remove_pathbuf(a6),a0
 		bsr	cat_pathname
-		movea.l	a0,a2				*  A2:�����p�X��, A3:�����p�X���̃t�@�C������
+		movea.l	a0,a2				*  A2:検索パス名, A3:検索パス名のファイル名部
 		movea.l	(a7)+,a0
 		bmi	remove_directory_too_long_path
 
@@ -307,7 +307,7 @@ remove_directory:
 		bhi	remove_directory_too_long_path
 
 		st	d2
-		move.w	#MODEVAL_ALL,-(a7)		*  ���ׂẴG���g������������
+		move.w	#MODEVAL_ALL,-(a7)		*  すべてのエントリを検索する
 		move.l	a2,-(a7)
 		pea	remove_filesbuf(a6)
 		DOS	_FILES
@@ -318,15 +318,15 @@ remove_directory_contents_loop:
 		bmi	do_remove_directory
 
 		lea	remove_filesbuf+ST_NAME(a6),a1
-		bsr	isreldir				*  . �� .. ��
-		beq	remove_directory_contents_continue	*  ����
+		bsr	isreldir				*  . と .. は
+		beq	remove_directory_contents_continue	*  無視
 
 		tst.b	d1
 		bne	remove_directory_contents_2
 		*
-		*  . �� .. �ȊO�̃G���g�������߂Č��������D
-		*  �Ƃ������Ƃ́C���Ȃ킿���̃f�B���N�g���͋�ł͂Ȃ��D
-		*  -i ���w�肳��Ă���Ȃ�C���̃f�B���N�g�����ɐi�ނ��ǂ�����₢���킹��D
+		*  . と .. 以外のエントリが初めて見つかった．
+		*  ということは，すなわちこのディレクトリは空ではない．
+		*  -i が指定されているなら，このディレクトリ下に進むかどうかを問い合わせる．
 		*
 		movem.l	a2-a3,-(a7)
 		move.l	d4,d0
@@ -339,7 +339,7 @@ remove_directory_contents_2:
 		bsr	strcpy
 		movea.l	a2,a0
 		bsr	lgetmode
-		bsr	remove_entry			*  �ċA�I  1�񂠂���164�o�C�g�̃X�^�b�N�������
+		bsr	remove_entry			*  再帰！  1回あたり164バイトのスタックを消費する
 		movem.l	(a7)+,d2/d4/a0/a2-a3
 		st	d1
 		tst.l	d0
@@ -355,8 +355,8 @@ remove_directory_contents_continue:
 do_remove_directory:
 		LEAVE_DIR
 		moveq	#-21,d0				*  D0.L := EDIRNOTEMPTY
-		tst.b	d2				*  �f�B���N�g���̒��ɍ폜���Ȃ��������̂��c���Ă���Ȃ�
-		beq	perror				*  �ǂ����폜�ł��Ȃ��̂�����Cconfirm �����ɃG���[�Ƃ��Đ�ɐi�ށD
+		tst.b	d2				*  ディレクトリの中に削除しなかったものが残っているなら
+		beq	perror				*  どうせ削除できないのだから，confirm せずにエラーとして先に進む．
 
 		moveq	#1,d1				*  1 : remove directory?
 		bsr	confirm_i
@@ -421,7 +421,7 @@ dir_too_deep:
 confirm_enter_dir:
 		moveq	#-1,d1				*  -1: enter directory?
 
-		*  �W�����͂��[���Ȃ�΁C�ǂݍ��ݐ�p�����r�b�g��ON�ł���ꍇ�C�₢���킹��
+		*  標準入力が端末ならば，読み込み専用属性ビットがONである場合，問い合わせる
 
 		tst.b	stdin_is_terminal
 		beq	confirm_i
@@ -433,8 +433,8 @@ confirm_enter_dir:
 confirm_remove_file:
 		moveq	#0,d1				*  0: remove file?
 
-		*  �W�����͂��[���Ȃ�΁C�{�����[���E���x���C�ǂݍ��ݐ�p�C
-		*  �B���C�V�X�e���̂ǂꂩ�̑����r�b�g��ON�ł���ꍇ�C�₢���킹��
+		*  標準入力が端末ならば，ボリューム・ラベル，読み込み専用，
+		*  隠し，システムのどれかの属性ビットがONである場合，問い合わせる
 
 		tst.b	stdin_is_terminal
 		beq	confirm_i
@@ -667,45 +667,45 @@ perror_table:
 	dc.w	msg_error-sys_errmsgs			*  25 (-26)
 
 sys_errmsgs:
-msg_error:		dc.b	'�G���[',0
-msg_nofile:		dc.b	'���̂悤�ȃt�@�C����f�B���N�g���͂���܂���',0
-msg_bad_name:		dc.b	'���O�������ł�',0
-msg_bad_drive:		dc.b	'�h���C�u�̎w�肪�����ł�',0
-msg_current:		dc.b	'�J�����g�E�f�B���N�g���ł��̂ō폜�ł��܂���',0
-msg_write_disabled:	dc.b	'�폜�͋�����Ă��܂���',0
-msg_not_empty:		dc.b	'�f�B���N�g������łȂ��̂ō폜�ł��܂���',0
+msg_error:		dc.b	'エラー',0
+msg_nofile:		dc.b	'このようなファイルやディレクトリはありません',0
+msg_bad_name:		dc.b	'名前が無効です',0
+msg_bad_drive:		dc.b	'ドライブの指定が無効です',0
+msg_current:		dc.b	'カレント・ディレクトリですので削除できません',0
+msg_write_disabled:	dc.b	'削除は許可されていません',0
+msg_not_empty:		dc.b	'ディレクトリが空でないので削除できません',0
 
 msg_myname:			dc.b	'rm'
 msg_colon:			dc.b	': ',0
-msg_no_memory:			dc.b	'������������܂���',CR,LF,0
-msg_illegal_option:		dc.b	'�s���ȃI�v�V���� -- ',0
-msg_too_few_args:		dc.b	'����������܂���',0
-msg_too_long_pathname:		dc.b	'�p�X�������߂��܂�',0
-msg_it_is_directory:		dc.b	'�f�B���N�g���ł�',0
-msg_readonly:			dc.b	'�������݋֎~',0
-msg_hidden:			dc.b	'�B��',0
-msg_system:			dc.b	'�V�X�e��',0
-msg_file:			dc.b	'�t�@�C���g',0
-msg_volumelabel:		dc.b	'�{�����[�����x���g',0
-msg_directory:			dc.b	'�f�B���N�g���g',0
-msg_remove:			dc.b	'�h���폜���܂����H ',0
-msg_enter:			dc.b	'�h�̉��ɐi�݂܂����H ',0
-msg_dir_too_deep:		dc.b	'�f�B���N�g�����[�߂��ď����ł��܂���',0
-msg_usage:			dc.b	CR,LF,'�g�p�@:  rm [-firvR] [--] <�t�@�C��> ...'
+msg_no_memory:			dc.b	'メモリが足りません',CR,LF,0
+msg_illegal_option:		dc.b	'不正なオプション -- ',0
+msg_too_few_args:		dc.b	'引数が足りません',0
+msg_too_long_pathname:		dc.b	'パス名が長過ぎます',0
+msg_it_is_directory:		dc.b	'ディレクトリです',0
+msg_readonly:			dc.b	'書き込み禁止',0
+msg_hidden:			dc.b	'隠し',0
+msg_system:			dc.b	'システム',0
+msg_file:			dc.b	'ファイル“',0
+msg_volumelabel:		dc.b	'ボリュームラベル“',0
+msg_directory:			dc.b	'ディレクトリ“',0
+msg_remove:			dc.b	'”を削除しますか？ ',0
+msg_enter:			dc.b	'”の下に進みますか？ ',0
+msg_dir_too_deep:		dc.b	'ディレクトリが深過ぎて処理できません',0
+msg_usage:			dc.b	CR,LF,'使用法:  rm [-firvR] [--] <ファイル> ...'
 msg_newline:			dc.b	CR,LF,0
 dos_wildcard_all:		dc.b	'*.*',0
 *****************************************************************
 .bss
-�g�h
+“”
 .even
 getsbuf:		ds.b	2+GETSLEN+1
 stdin_is_terminal:	ds.b	1
 .even
 			ds.b	256+remove_recurse_stacksize*(MAXRECURSE+1)
-			*  �K�v�ȃX�^�b�N�ʂ́C�ċA�̓x�ɏ�����X�^�b�N�ʂ�
-			*  ���̉񐔂ƂŌ��܂�D
-			*  ���̑��Ƀ}�[�W�����܂߂��~�j�}���ʂƂ��� 256�o�C�g���m�ۂ��Ă����D
-			*  ���̃v���O�����ł� 256�o�C�g����Ώ[���ł���D
+			*  必要なスタック量は，再帰の度に消費されるスタック量と
+			*  その回数とで決まる．
+			*  その他にマージンを含めたミニマム量として 256バイトを確保しておく．
+			*  このプログラムでは 256バイトあれば充分である．
 .even
 stack_bottom:
 *****************************************************************
